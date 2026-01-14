@@ -363,7 +363,7 @@ func (server *FtpServer) clientArrival(conn net.Conn) {
 	server.clientCounter++
 	id := server.clientCounter
 
-	c := server.newClientHandler(conn, id, server.settings.DefaultTransferType)
+	c := server.newClientHandler(conn, id, server.settings.DefaultTransferType, server.settings.ParamMutationHandler)
 	go c.HandleCommands()
 
 	c.logger.Debug("Client connected", "clientIp", conn.RemoteAddr())

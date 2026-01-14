@@ -89,37 +89,38 @@ func getHashName(algo HASHAlgo) string {
 }
 
 type clientHandler struct {
-	connectedAt         time.Time       // Date of connection
-	paramsMutex         sync.RWMutex    // mutex to protect the parameters exposed to the library users
-	driver              ClientDriver    // Client handling driver
-	conn                net.Conn        // TCP connection
-	user                string          // Authenticated user
-	path                string          // Current path
-	listPath            string          // Path for NLST/LIST requests
-	clnt                string          // Identified client
-	command             string          // Command received on the connection
-	ctxRnfr             string          // Rename from
-	logger              *slog.Logger    // Client handler logging
-	transferWg          sync.WaitGroup  // wait group for command that open a transfer connection
-	transfer            transferHandler // Transfer connection (passive or active)s
-	extra               any             // Additional application-specific data
-	server              *FtpServer      // Server on which the connection was accepted
-	writer              *bufio.Writer   // Writer on the TCP connection
-	reader              *bufio.Reader   // Reader on the TCP connection
-	ctxRest             int64           // Restart point
-	transferMu          sync.Mutex      // this mutex will protect the transfer parameters
-	id                  uint32          // ID of the client
-	selectedHashAlgo    HASHAlgo        // algorithm used when we receive the HASH command
-	currentTransferType TransferType    // current transfer type
-	lastDataChannel     DataChannel     // Last data channel mode (passive or active)
-	debug               bool            // Show debugging info on the server side
-	transferTLS         bool            // Use TLS for transfer connection
-	controlTLS          bool            // Use TLS for control connection
-	transferMode        TransferMode    // Transfer mode (stream, deflate)
-	isTransferOpen      bool            // indicate if the transfer connection is opened
-	isTransferAborted   bool            // indicate if the transfer was aborted
-	connClosed          bool            // indicates if the connection has been commanded to close
-	tlsRequirement      TLSRequirement  // TLS requirement to respect
+	connectedAt          time.Time         // Date of connection
+	paramsMutex          sync.RWMutex      // mutex to protect the parameters exposed to the library users
+	driver               ClientDriver      // Client handling driver
+	conn                 net.Conn          // TCP connection
+	user                 string            // Authenticated user
+	path                 string            // Current path
+	listPath             string            // Path for NLST/LIST requests
+	clnt                 string            // Identified client
+	command              string            // Command received on the connection
+	ctxRnfr              string            // Rename from
+	logger               *slog.Logger      // Client handler logging
+	transferWg           sync.WaitGroup    // wait group for command that open a transfer connection
+	transfer             transferHandler   // Transfer connection (passive or active)s
+	extra                any               // Additional application-specific data
+	server               *FtpServer        // Server on which the connection was accepted
+	writer               *bufio.Writer     // Writer on the TCP connection
+	reader               *bufio.Reader     // Reader on the TCP connection
+	ctxRest              int64             // Restart point
+	transferMu           sync.Mutex        // this mutex will protect the transfer parameters
+	id                   uint32            // ID of the client
+	selectedHashAlgo     HASHAlgo          // algorithm used when we receive the HASH command
+	currentTransferType  TransferType      // current transfer type
+	lastDataChannel      DataChannel       // Last data channel mode (passive or active)
+	debug                bool              // Show debugging info on the server side
+	transferTLS          bool              // Use TLS for transfer connection
+	controlTLS           bool              // Use TLS for control connection
+	transferMode         TransferMode      // Transfer mode (stream, deflate)
+	isTransferOpen       bool              // indicate if the transfer connection is opened
+	isTransferAborted    bool              // indicate if the transfer was aborted
+	connClosed           bool              // indicates if the connection has been commanded to close
+	tlsRequirement       TLSRequirement    // TLS requirement to respect
+	paramMutationHandler ParamMutationFunc //mutation functions for corresponding command's param
 }
 
 // newClientHandler initializes a client handler when someone connects
@@ -127,18 +128,20 @@ func (server *FtpServer) newClientHandler(
 	connection net.Conn,
 	clientID uint32,
 	transferType TransferType,
+	mutationHandler ParamMutationFunc,
 ) *clientHandler {
 	return &clientHandler{
-		server:              server,
-		conn:                connection,
-		id:                  clientID,
-		writer:              bufio.NewWriter(connection),
-		reader:              bufio.NewReaderSize(connection, maxCommandSize),
-		connectedAt:         time.Now().UTC(),
-		path:                "/",
-		selectedHashAlgo:    HASHAlgoSHA256,
-		currentTransferType: transferType,
-		logger:              server.Logger.With("clientId", clientID),
+		server:               server,
+		conn:                 connection,
+		id:                   clientID,
+		writer:               bufio.NewWriter(connection),
+		reader:               bufio.NewReaderSize(connection, maxCommandSize),
+		connectedAt:          time.Now().UTC(),
+		path:                 "/",
+		selectedHashAlgo:     HASHAlgoSHA256,
+		currentTransferType:  transferType,
+		logger:               server.Logger.With("clientId", clientID),
+		paramMutationHandler: mutationHandler,
 	}
 }
 
@@ -545,6 +548,11 @@ func (c *clientHandler) handleCommandsStreamError(err error) bool {
 func (c *clientHandler) handleCommand(line string) {
 	command, param := parseLine(line)
 	command = strings.ToUpper(command)
+
+	//execute param mutation if registered
+	if c.paramMutationHandler != nil {
+		param = c.paramMutationHandler(command, param)
+	}
 
 	cmdDesc := commandsMap[command]
 	if cmdDesc == nil {

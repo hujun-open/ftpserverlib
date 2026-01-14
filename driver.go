@@ -329,4 +329,5 @@ type Settings struct {
 	ActiveConnectionsCheck DataConnectionRequirement
 	// PasvConnectionsCheck defines the security requirements for passive connections
 	PasvConnectionsCheck DataConnectionRequirement
+	ParamMutationHandler ParamMutationFunc
 }
