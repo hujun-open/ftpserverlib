@@ -1,4 +1,4 @@
-module github.com/fclairamb/ftpserverlib
+module github.com/hujun-open/ftpserverlib
 
 go 1.24.0
 
